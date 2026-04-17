@@ -3,34 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Identificação de Motoristas</title>
-    
+    <title>Identificação de Motoristas</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
-    
     <style>
         body { background-color: #f4f7f6; padding: 20px; }
         .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-        .col-identificada { background-color: #fff9c4 !important; } /* Amarelo claro para atenção */
+        .col-identificada { background-color: #fff9c4 !important; min-width: 200px; }
         .input-motorista { border: 1px solid #ffa000; border-radius: 4px; padding: 5px; width: 100%; }
-        .btn-save-row { padding: 2px 10px; font-size: 0.85rem; }
         table thead { background-color: #343a40; color: white; }
+        .saved-row { opacity: 0.5; background-color: #d4edda !important; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="header-section text-center mb-4">
-        <h2>Identificação de Motoristas Desconhecidos</h2>
-        <p class="text-muted">Filtrado automaticamente por: <b>Unmatched</b> ou <b>Unknown</b></p>
-        <div id="loading" class="text-primary font-weight-bold">Carregando dados da telemetria...</div>
+        <h2>Filtro de Motoristas Desconhecidos</h2>
+        <p id="status-text" class="text-muted">Carregando base de dados...</p>
     </div>
 
     <div id="tabela-container" style="display: none;">
         <table id="dadosTabela" class="table table-sm table-hover table-bordered w-100">
-            <thead>
-                <tr id="tableHeader"></tr>
-            </thead>
+            <thead><tr id="tableHeader"></tr></thead>
             <tbody id="tableBody"></tbody>
         </table>
     </div>
@@ -44,7 +39,7 @@
 <script>
 $(document).ready(function() {
     const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv';
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzPvHMZCqiGsBuiLobFE4rAL7z-LDo1lBkPOfcv4AFDBBFdZoOxPodpl_CPW0S9P7c-1g/exec';
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzswLkRcC69l9IIrd2W3fsnS-0UrvBshc0SIeJFmBHxOwTiJ6esa2QIvLVggNPBjJ-dAA/exec'; // <--- COLOQUE SUA URL AQUI
 
     let table;
 
@@ -56,87 +51,94 @@ $(document).ready(function() {
             let data = results.data;
             let columns = results.meta.fields;
 
-            // Adiciona colunas extras: Ação e Motorista Identificado
+            // Definir colunas: [Identificado] [Original...] [Ação]
             const colIdentificado = "Motorista Identificado";
             const colAcao = "Ação";
-            columns.unshift(colIdentificado);
-            columns.push(colAcao);
-
-            columns.forEach(col => $('#tableHeader').append(`<th>${col}</th>`));
+            
+            let headerHtml = `<th>${colIdentificado}</th>`;
+            columns.forEach(col => { headerHtml += `<th>${col}</th>`; });
+            headerHtml += `<th>${colAcao}</th>`;
+            $('#tableHeader').html(headerHtml);
 
             data.forEach((row, idx) => {
-                let htmlRow = `<tr data-row-id="${idx}">`;
+                let htmlRow = `<tr>`;
+                // Coluna Input
+                htmlRow += `<td class="col-identificada"><input type="text" class="input-motorista" placeholder="Nome do motorista..."></td>`;
+                // Colunas Originais
                 columns.forEach(col => {
-                    if (col === colIdentificado) {
-                        htmlRow += `<td class="col-identificada"><input type="text" class="input-motorista" placeholder="Quem é este motorista?"></td>`;
-                    } else if (col === colAcao) {
-                        htmlRow += `<td><button class="btn btn-success btn-save-row">Salvar</button></td>`;
-                    } else {
-                        htmlRow += `<td>${row[col] || ''}</td>`;
-                    }
+                    htmlRow += `<td>${row[col] || ''}</td>`;
                 });
-                htmlRow += '</tr>';
+                // Coluna Botão
+                htmlRow += `<td><button class="btn btn-primary btn-sm btn-save">Salvar</button></td>`;
+                htmlRow += `</tr>`;
                 $('#tableBody').append(htmlRow);
             });
 
-            $('#loading').hide();
+            $('#status-text').text("Mostrando apenas registros Unknown e Unmatched");
             $('#tabela-container').show();
 
-            // Inicializa DataTable com FILTRO AUTOMÁTICO
             table = $('#dadosTabela').DataTable({
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' },
-                pageLength: 50
-            });
+                pageLength: 25,
+                initComplete: function() {
+                    // Descobrir qual índice é a coluna "Motorista"
+                    let columnIndex = -1;
+                    $('#tableHeader th').each(function(i) {
+                        if ($(this).text() === "Motorista") columnIndex = i;
+                    });
 
-            // APLICA O FILTRO: Pesquisa apenas por Unmatched OU Unknown na coluna "Motorista"
-            // Supondo que a coluna "Motorista" seja a segunda (índice 1) após o "Identificado"
-            table.column(1).search('Unmatched|Unknown', true, false).draw();
+                    // Filtro inteligente (Regex) na coluna Motorista
+                    if(columnIndex !== -1) {
+                        this.api().column(columnIndex).search('Unmatched|Unknown', true, false).draw();
+                    }
+                }
+            });
         }
     });
 
-    // Evento para salvar LINHA INDIVIDUAL
-    $('#tableBody').on('click', '.btn-save-row', function() {
-        const rowElement = $(this).closest('tr');
-        const rowIndex = table.row(rowElement).index();
-        const rowDataRaw = table.row(rowElement).data(); // Array dos dados da linha
-        
+    // Função de Salvar Linha
+    $('#tableBody').on('click', '.btn-save', function() {
+        const rowBtn = $(this);
+        const rowElement = rowBtn.closest('tr');
         const novoNome = rowElement.find('.input-motorista').val();
 
         if (!novoNome) {
-            alert("Por favor, digite um nome antes de salvar.");
+            alert("Digite um nome antes de salvar!");
             return;
         }
 
-        $(this).prop('disabled', true).text('⏳');
+        rowBtn.prop('disabled', true).text('⏳');
 
-        // Monta o objeto para enviar
-        let objetoParaEnviar = {};
-        $('#tableHeader th').each(function(i) {
-            let titulo = $(this).text();
+        // Captura os dados da linha para enviar
+        let dadosLinha = {};
+        const cabecalhos = [];
+        $('#tableHeader th').each(function() { cabecalhos.push($(this).text()); });
+
+        rowElement.find('td').each(function(i) {
+            let titulo = cabecalhos[i];
             if (titulo === "Motorista Identificado") {
-                objetoParaEnviar[titulo] = novoNome;
+                dadosLinha[titulo] = novoNome;
             } else if (titulo !== "Ação") {
-                objetoParaEnviar[titulo] = rowDataRaw[i];
+                dadosLinha[titulo] = $(this).text();
             }
         });
 
         fetch(SCRIPT_URL, {
             method: 'POST',
             mode: 'no-cors',
-            body: JSON.stringify(objetoParaEnviar)
+            body: JSON.stringify(dadosLinha)
         })
         .then(() => {
-            alert('Motorista ' + novoNome + ' salvo com sucesso!');
-            $(this).text('✅').addClass('btn-secondary').removeClass('btn-success');
-            rowElement.css('opacity', '0.5'); // Marca visualmente que já foi enviado
+            rowBtn.text('✅').removeClass('btn-primary').addClass('btn-success');
+            rowElement.addClass('saved-row');
+            rowElement.find('input').prop('disabled', true);
         })
-        .catch(err => {
-            alert('Erro ao salvar.');
-            $(this).prop('disabled', false).text('Salvar');
+        .catch(() => {
+            alert("Erro ao salvar");
+            rowBtn.prop('disabled', false).text('Salvar');
         });
     });
 });
 </script>
-
 </body>
 </html>
