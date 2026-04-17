@@ -3,26 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Média por Motorista</title>
+    <title>Dashboard Telemetria - GitHub</title>
     
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
     
     <style>
-        body { background-color: #f8f9fa; padding: 20px; }
-        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .header-section { margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 20px; }
+        body { background-color: #f4f7f6; padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .header-section { margin-bottom: 25px; border-bottom: 2px solid #f1f1f1; padding-bottom: 20px; }
         #loading { margin: 20px 0; font-weight: bold; color: #007bff; }
+        .col-identificada { font-weight: bold; color: #198754; background-color: #e8f5e9 !important; }
         table thead { background-color: #007bff; color: white; }
+        .btn-enviar { padding: 12px 30px; font-weight: bold; transition: all 0.3s; }
+        .btn-enviar:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(25, 135, 84, 0.3); }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="header-section text-center">
-        <h2>Visualizador em Tempo Real</h2>
-        <p class="text-muted">Dados carregados diretamente do Google Sheets</p>
-        <div id="loading">Carregando dados...</div>
+        <h2>Dashboard de Tratamento de Dados</h2>
+        <p class="text-muted">Integração GitHub Pages + Google Sheets API</p>
+        
+        <div id="loading">
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            Buscando dados na planilha mãe...
+        </div>
+
+        <button id="btnEnviar" class="btn btn-success btn-enviar" style="display:none;">
+            🚀 Sincronizar Dados Tratados com Google Sheets
+        </button>
     </div>
 
     <div id="tabela-container" style="display: none;">
@@ -42,51 +53,86 @@
 
 <script>
     $(document).ready(function() {
-        // Sua URL de publicação
-        const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv';
+        // --- CONFIGURAÇÕES ---
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv';
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxKOphOJ4y0lM5IvyyJskFpDIfR3KkqZjQbaZb5uHLfEOY_CSn6iKTMVkYYr1AwmCcqeQ/exec';
 
-        Papa.parse(csvUrl, {
+        const mapeamentoMotoristas = {
+            "Unmatched Extended DriverID": "Motorista Reserva A",
+            "Unknown": "Não Identificado (Verificar)",
+            "NULL": "Sem Cadastro"
+        };
+
+        let dadosTratadosGlobal = [];
+
+        // --- CARGA DE DADOS ---
+        Papa.parse(CSV_URL, {
             download: true,
             header: true,
             skipEmptyLines: true,
-            encoding: "UTF-8",
             complete: function(results) {
-                const data = results.data;
-                const columns = results.meta.fields;
+                let data = results.data;
+                let columns = results.meta.fields;
 
-                // Criar Cabeçalho dinamicamente
-                columns.forEach(col => {
-                    $('#tableHeader').append(`<th>${col}</th>`);
-                });
+                // Adicionar coluna de tratamento
+                const novaCol = "Motorista Identificado";
+                columns.unshift(novaCol);
 
-                // Preencher Linhas
+                // Montar Cabeçalho
+                columns.forEach(col => $('#tableHeader').append(`<th>${col}</th>`));
+
+                // Processar Linhas
                 data.forEach(row => {
+                    const original = row['Motorista'] || '';
+                    row[novaCol] = mapeamentoMotoristas[original] || original;
+                    
+                    dadosTratadosGlobal.push(row);
+
                     let htmlRow = '<tr>';
                     columns.forEach(col => {
-                        htmlRow += `<td>${row[col] || ''}</td>`;
+                        const style = (col === novaCol) ? 'class="col-identificada"' : '';
+                        htmlRow += `<td ${style}>${row[col] || ''}</td>`;
                     });
                     htmlRow += '</tr>';
                     $('#tableBody').append(htmlRow);
                 });
 
-                // Esconder aviso de carregamento e mostrar tabela
                 $('#loading').hide();
                 $('#tabela-container').show();
+                $('#btnEnviar').fadeIn();
 
-                // Inicializar DataTables
                 $('#dadosTabela').DataTable({
-                    language: {
-                        url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json'
-                    },
+                    language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' },
                     responsive: true,
-                    pageLength: 15,
-                    order: [] 
+                    pageLength: 10
                 });
-            },
-            error: function(err) {
-                $('#loading').html('<span class="text-danger">Erro ao carregar os dados. Verifique a publicação da planilha.</span>');
-                console.error(err);
             }
+        });
+
+        // --- ENVIO DOS DADOS ---
+        $('#btnEnviar').on('click', function() {
+            if (!confirm("Deseja exportar os dados tratados para a planilha?")) return;
+
+            const btn = $(this);
+            btn.prop('disabled', true).text('⏳ Sincronizando...');
+
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors', 
+                cache: 'no-cache',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dadosTratadosGlobal)
+            })
+            .then(() => {
+                alert('Sincronização concluída com sucesso!');
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Erro na comunicação com o Google Scripts.');
+            })
+            .finally(() => {
+                btn.prop('disabled', false).text('🚀 Sincronizar Dados Tratados com Google Sheets');
+            });
         });
     });
 </script>
