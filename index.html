@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Identificação de Motoristas</title>
+    <title>Identificação de Motoristas - Pendentes</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
     <style>
@@ -19,8 +19,8 @@
 
 <div class="container">
     <div class="header-section text-center mb-4">
-        <h2>Filtro de Motoristas Desconhecidos</h2>
-        <p id="status-text" class="text-muted">Carregando base de dados...</p>
+        <h2>Motoristas Aguardando Identificação</h2>
+        <p id="status-text" class="text-muted">Filtrando apenas registros desconhecidos e não identificados...</p>
     </div>
 
     <div id="tabela-container" style="display: none;">
@@ -39,7 +39,7 @@
 <script>
 $(document).ready(function() {
     const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv';
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzswLkRcC69l9IIrd2W3fsnS-0UrvBshc0SIeJFmBHxOwTiJ6esa2QIvLVggNPBjJ-dAA/exec'; // <--- COLOQUE SUA URL AQUI
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzswLkRcC69l9IIrd2W3fsnS-0UrvBshc0SIeJFmBHxOwTiJ6esa2QIvLVggNPBjJ-dAA/exec'; 
 
     let table;
 
@@ -51,74 +51,91 @@ $(document).ready(function() {
             let data = results.data;
             let columns = results.meta.fields;
 
-            // Definir colunas: [Identificado] [Original...] [Ação]
-            const colIdentificado = "Motorista Identificado";
-            const colAcao = "Ação";
-            
-            let headerHtml = `<th>${colIdentificado}</th>`;
+            // Criar cabeçalho dinâmico (mantendo a ordem original do CSV)
+            const colAcao = "Ação de Salvar";
+            let headerHtml = "";
             columns.forEach(col => { headerHtml += `<th>${col}</th>`; });
             headerHtml += `<th>${colAcao}</th>`;
             $('#tableHeader').html(headerHtml);
 
             data.forEach((row, idx) => {
                 let htmlRow = `<tr>`;
-                // Coluna Input
-                htmlRow += `<td class="col-identificada"><input type="text" class="input-motorista" placeholder="Nome do motorista..."></td>`;
-                // Colunas Originais
                 columns.forEach(col => {
-                    htmlRow += `<td>${row[col] || ''}</td>`;
+                    // Se for a coluna "Motorista identificado", transformamos em um input
+                    if (col === "Motorista identificado") {
+                        htmlRow += `<td class="col-identificada">
+                            <input type="text" class="input-motorista" value="${row[col] || ''}" placeholder="Nome do motorista...">
+                        </td>`;
+                    } else {
+                        htmlRow += `<td>${row[col] || ''}</td>`;
+                    }
                 });
-                // Coluna Botão
+                // Botão no final
                 htmlRow += `<td><button class="btn btn-primary btn-sm btn-save">Salvar</button></td>`;
                 htmlRow += `</tr>`;
                 $('#tableBody').append(htmlRow);
             });
 
-            $('#status-text').text("Mostrando apenas registros Unknown e Unmatched");
             $('#tabela-container').show();
+
+            // Custom Filter para o DataTables
+            $.fn.dataTable.ext.search.push(
+                function(settings, data, dataIndex) {
+                    let idxMotorista = -1;
+                    let idxIdentificado = -1;
+
+                    // Achar os índices das colunas pelo nome
+                    $('#tableHeader th').each(function(i) {
+                        let txt = $(this).text().trim();
+                        if (txt === "Motorista") idxMotorista = i;
+                        if (txt === "Motorista identificado") idxIdentificado = i;
+                    });
+
+                    let valorMotorista = data[idxMotorista] || "";
+                    // Para o DataTables, o valor do input precisa ser pego via DOM se for editável, 
+                    // mas como estamos filtrando o carregamento inicial do CSV:
+                    let valorIdentificado = data[idxIdentificado] || "";
+
+                    // REGRA: Mostrar se (Motorista contém Unmatched OU Unknown) E (Motorista identificado está vazio)
+                    let ehDesconhecido = /Unmatched|Unknown/i.test(valorMotorista);
+                    let naoEstaPreenchido = (valorIdentificado.trim() === "");
+
+                    return ehDesconhecido && naoEstaPreenchido;
+                }
+            );
 
             table = $('#dadosTabela').DataTable({
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' },
-                pageLength: 25,
-                initComplete: function() {
-                    // Descobrir qual índice é a coluna "Motorista"
-                    let columnIndex = -1;
-                    $('#tableHeader th').each(function(i) {
-                        if ($(this).text() === "Motorista") columnIndex = i;
-                    });
-
-                    // Filtro inteligente (Regex) na coluna Motorista
-                    if(columnIndex !== -1) {
-                        this.api().column(columnIndex).search('Unmatched|Unknown', true, false).draw();
-                    }
-                }
+                pageLength: 25
             });
+
+            $('#status-text').text("Registros pendentes filtrados com sucesso.");
         }
     });
 
-    // Função de Salvar Linha
+    // Função de Salvar (Individual)
     $('#tableBody').on('click', '.btn-save', function() {
         const rowBtn = $(this);
         const rowElement = rowBtn.closest('tr');
-        const novoNome = rowElement.find('.input-motorista').val();
+        const inputIdentificado = rowElement.find('.input-motorista');
+        const novoNome = inputIdentificado.val();
 
         if (!novoNome) {
-            alert("Digite um nome antes de salvar!");
+            alert("Digite um nome para identificar o motorista!");
             return;
         }
 
         rowBtn.prop('disabled', true).text('⏳');
 
-        // Captura os dados da linha para enviar
         let dadosLinha = {};
         const cabecalhos = [];
         $('#tableHeader th').each(function() { cabecalhos.push($(this).text()); });
 
         rowElement.find('td').each(function(i) {
             let titulo = cabecalhos[i];
-            if (titulo === "Motorista Identificado") {
+            if (titulo === "Motorista identificado") {
                 dadosLinha[titulo] = novoNome;
-            } else if (titulo !== "Ação") {
+            } else if (titulo !== "Ação de Salvar") {
                 dadosLinha[titulo] = $(this).text();
             }
         });
@@ -131,7 +148,9 @@ $(document).ready(function() {
         .then(() => {
             rowBtn.text('✅').removeClass('btn-primary').addClass('btn-success');
             rowElement.addClass('saved-row');
-            rowElement.find('input').prop('disabled', true);
+            inputIdentificado.prop('disabled', true);
+            // Opcional: remover a linha da visão após salvar
+            // setTimeout(() => { table.row(rowElement).remove().draw(); }, 1500);
         })
         .catch(() => {
             alert("Erro ao salvar");
