@@ -2,31 +2,27 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Identificação de Motoristas</title>
+    <title>Identificador de Motoristas v3</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
     <style>
-        body { background-color: #f4f7f6; padding: 20px; }
-        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-        .col-identificada { background-color: #fff9c4 !important; min-width: 200px; }
-        .input-motorista { border: 1px solid #ffa000; border-radius: 4px; padding: 5px; width: 100%; }
-        table thead { background-color: #343a40; color: white; }
-        .saved-row { opacity: 0.5; background-color: #d4edda !important; }
+        body { background-color: #f8f9fa; padding: 20px; }
+        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .col-input { background-color: #fff9c4 !important; width: 250px; }
+        .input-text { border: 2px solid #ffc107; width: 100%; border-radius: 4px; padding: 4px; }
+        .status-badge { font-size: 0.8em; margin-top: 5px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="header-section text-center mb-4">
-        <h2>Filtro de Motoristas Desconhecidos</h2>
-        <p id="status-text" class="text-muted">Carregando base de dados...</p>
-    </div>
+    <h2 class="text-center">Painel de Identificação</h2>
+    <p id="info" class="text-center text-muted">Lendo planilha...</p>
 
-    <div id="tabela-container" style="display: none;">
-        <table id="dadosTabela" class="table table-sm table-hover table-bordered w-100">
-            <thead><tr id="tableHeader"></tr></thead>
-            <tbody id="tableBody"></tbody>
+    <div id="tabela-container" style="display:none;">
+        <table id="minhaTabela" class="table table-bordered table-striped w-100">
+            <thead class="table-dark"><tr id="theader"></tr></thead>
+            <tbody id="tbody"></tbody>
         </table>
     </div>
 </div>
@@ -38,105 +34,93 @@
 
 <script>
 $(document).ready(function() {
-    const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv';
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw5nA2A4BC7uymRLW6nZ3cvqA9mgq2qvtdWXh-BU-7sjm7uQPj6tbN-sDJeMQ7WzDeqWw/exec'; // <--- COLOQUE SUA URL AQUI
+    const URL_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv';
+    const URL_SCRIPT = 'https://script.google.com/macros/s/AKfycbyf_iaV8kGSx36X3krP_kuppM_hkrc7JkuJtWLjAzgPD4QJCMAxqwnB9G6VCzgvAefkyw/exec'; // Troque pela sua URL do Apps Script
 
-    let table;
-
-    Papa.parse(CSV_URL, {
+    Papa.parse(URL_CSV, {
         download: true,
         header: true,
         skipEmptyLines: true,
-        complete: function(results) {
-            let data = results.data;
-            let columns = results.meta.fields;
-
-            // Definir colunas: [Identificado] [Original...] [Ação]
-            const colIdentificado = "Motorista Identificado";
-            const colAcao = "Ação";
+        complete: function(res) {
+            const dados = res.data;
+            const colunas = res.meta.fields;
             
-            let headerHtml = `<th>${colIdentificado}</th>`;
-            columns.forEach(col => { headerHtml += `<th>${col}</th>`; });
-            headerHtml += `<th>${colAcao}</th>`;
-            $('#tableHeader').html(headerHtml);
+            console.log("Colunas encontradas:", colunas);
 
-            data.forEach((row, idx) => {
-                let htmlRow = `<tr>`;
-                // Coluna Input
-                htmlRow += `<td class="col-identificada"><input type="text" class="input-motorista" placeholder="Nome do motorista..."></td>`;
-                // Colunas Originais
-                columns.forEach(col => {
-                    htmlRow += `<td>${row[col] || ''}</td>`;
-                });
-                // Coluna Botão
-                htmlRow += `<td><button class="btn btn-primary btn-sm btn-save">Salvar</button></td>`;
-                htmlRow += `</tr>`;
-                $('#tableBody').append(htmlRow);
-            });
+            // Tenta achar as colunas independente de maiúsculas/minúsculas
+            const colMotoristaOriginal = colunas.find(c => c.toLowerCase().includes("motorista") && !c.toLowerCase().includes("identificado"));
+            const colMotoristaIdentificado = colunas.find(c => c.toLowerCase().includes("identificado"));
 
-            $('#status-text').text("Mostrando apenas registros Unknown e Unmatched");
-            $('#tabela-container').show();
+            if (!colMotoristaOriginal || !colMotoristaIdentificado) {
+                alert("Erro: Verifique se as colunas 'Motorista' e 'Motorista identificado' existem na planilha.");
+                return;
+            }
 
-            table = $('#dadosTabela').DataTable({
-                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' },
-                pageLength: 25,
-                initComplete: function() {
-                    // Descobrir qual índice é a coluna "Motorista"
-                    let columnIndex = -1;
-                    $('#tableHeader th').each(function(i) {
-                        if ($(this).text() === "Motorista") columnIndex = i;
+            // Monta cabeçalho
+            let hHtml = "";
+            colunas.forEach(c => hHtml += `<th>${c}</th>`);
+            hHtml += "<th>Ação</th>";
+            $('#theader').html(hHtml);
+
+            // Filtra e preenche
+            let contagem = 0;
+            dados.forEach(row => {
+                const valMot = (row[colMotoristaOriginal] || "").toString();
+                const valIden = (row[colMotoristaIdentificado] || "").toString().trim();
+
+                // SÓ MOSTRA SE: For "Unknown/Unmatched" E o campo Identificado estiver VAZIO
+                if (/Unmatched|Unknown/i.test(valMot) && valIden === "") {
+                    contagem++;
+                    let rHtml = "<tr>";
+                    colunas.forEach(c => {
+                        if (c === colMotoristaIdentificado) {
+                            rHtml += `<td class="col-input"><input type="text" class="input-text" placeholder="Digite o nome..."></td>`;
+                        } else {
+                            rHtml += `<td>${row[c] || ""}</td>`;
+                        }
                     });
-
-                    // Filtro inteligente (Regex) na coluna Motorista
-                    if(columnIndex !== -1) {
-                        this.api().column(columnIndex).search('Unmatched|Unknown', true, false).draw();
-                    }
+                    rHtml += `<td><button class="btn btn-sm btn-success btn-salvar">Salvar</button></td>`;
+                    rHtml += "</tr>";
+                    $('#tbody').append(rHtml);
                 }
             });
+
+            $('#info').text(`Encontrados ${contagem} registros pendentes.`);
+            $('#tabela-container').show();
+            $('#minhaTabela').DataTable({ language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' }});
         }
     });
 
-    // Função de Salvar Linha
-    $('#tableBody').on('click', '.btn-save', function() {
-        const rowBtn = $(this);
-        const rowElement = rowBtn.closest('tr');
-        const novoNome = rowElement.find('.input-motorista').val();
+    // Ação do Botão Salvar
+    $('#tbody').on('click', '.btn-salvar', function() {
+        const btn = $(this);
+        const row = btn.closest('tr');
+        const input = row.find('.input-text');
+        const novoNome = input.val().trim();
 
-        if (!novoNome) {
-            alert("Digite um nome antes de salvar!");
-            return;
-        }
+        if (!novoNome) return alert("Digite um nome!");
 
-        rowBtn.prop('disabled', true).text('⏳');
+        btn.prop('disabled', true).text('...');
 
-        // Captura os dados da linha para enviar
-        let dadosLinha = {};
-        const cabecalhos = [];
-        $('#tableHeader th').each(function() { cabecalhos.push($(this).text()); });
+        // Mapeia os dados da linha
+        let payload = {};
+        const headers = [];
+        $('#theader th').each(function() { headers.push($(this).text()); });
 
-        rowElement.find('td').each(function(i) {
-            let titulo = cabecalhos[i];
-            if (titulo === "Motorista Identificado") {
-                dadosLinha[titulo] = novoNome;
-            } else if (titulo !== "Ação") {
-                dadosLinha[titulo] = $(this).text();
-            }
+        row.find('td').each(function(i) {
+            const h = headers[i];
+            if (h === "Ação") return;
+            // Se for a coluna do input, pega o valor do input, senão pega o texto da célula
+            payload[h] = headers[i].toLowerCase().includes("identificado") ? novoNome : $(this).text();
         });
 
-        fetch(SCRIPT_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify(dadosLinha)
-        })
+        fetch(URL_SCRIPT, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
         .then(() => {
-            rowBtn.text('✅').removeClass('btn-primary').addClass('btn-success');
-            rowElement.addClass('saved-row');
-            rowElement.find('input').prop('disabled', true);
+            btn.text('✅').removeClass('btn-success').addClass('btn-secondary');
+            row.css('opacity', '0.4');
+            input.prop('disabled', true);
         })
-        .catch(() => {
-            alert("Erro ao salvar");
-            rowBtn.prop('disabled', false).text('Salvar');
-        });
+        .catch(e => { alert("Erro ao salvar"); btn.prop('disabled', false).text('Salvar'); });
     });
 });
 </script>
