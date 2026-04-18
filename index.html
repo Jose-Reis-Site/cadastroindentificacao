@@ -37,7 +37,7 @@ $(document).ready(function() {
     // Adicionamos &cachebust= + data atual para forçar o Google a atualizar o CSV
     const URL_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv' + '&cachebust=' + new Date().getTime();
     
-    const URL_SCRIPT = 'SUA_URL_AQUI'; 
+    const URL_SCRIPT = 'https://script.google.com/macros/s/AKfycbzn7jPkc3Tfs1YDcPZbSe4al-Mp-HWA4fVlM2l_A8Vg2QhZalNe4ed7VToQU4q3KBz0BA/exec'; 
 
     Papa.parse(URL_CSV, {
         download: true,
