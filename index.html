@@ -39,7 +39,7 @@
 <script>
 $(document).ready(function() {
     const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv';
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGJn4mrybiumVM1vgRzQSYVcoXETQjhInfgM9jcuKfU3sjnG6Gy66wt5JrE8zXkqDLmQ/exec'; // <--- COLOQUE SUA URL AQUI
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbydE7dmdOrpDfsnj3-qF1K1PVxYupxldMMWtSGfABB_fVwZej6JGgVGjhBh93HG0nvYqg/exec'; // <--- COLOQUE SUA URL AQUI
 
     let table;
 
@@ -123,16 +123,23 @@ $(document).ready(function() {
             }
         });
 
-        fetch(SCRIPT_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify(dadosLinha)
-        })
-        .then(() => {
-            rowBtn.text('✅').removeClass('btn-primary').addClass('btn-success');
-            rowElement.addClass('saved-row');
-            rowElement.find('input').prop('disabled', true);
-        })
+        // Localize este trecho no seu index.html:
+fetch(SCRIPT_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    body: JSON.stringify(dadosLinha)
+})
+.then(() => {
+    // --- ADICIONE ESTAS LINHAS ABAIXO ---
+    rowBtn.text('✅').removeClass('btn-primary').addClass('btn-success');
+    rowElement.addClass('saved-row');
+    
+    // Remove a linha da tabela visualmente após 1 segundo para você ver o feedback de sucesso
+    setTimeout(() => {
+        table.row(rowElement).remove().draw(false);
+    }, 1000);
+    // ------------------------------------
+})
         .catch(() => {
             alert("Erro ao salvar");
             rowBtn.prop('disabled', false).text('Salvar');
