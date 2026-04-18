@@ -2,28 +2,24 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Identificador de Motoristas v4</title>
-    
+    <title>Controle de Motoristas v5</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
-    
     <style>
         body { background-color: #f4f7f6; padding: 20px; font-family: sans-serif; }
         .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        .header-section { margin-bottom: 25px; border-bottom: 2px solid #f1f1f1; padding-bottom: 20px; }
         .col-input { background-color: #fff9c4 !important; min-width: 200px; }
         .input-text { border: 2px solid #ffc107; border-radius: 4px; padding: 5px; width: 100%; font-weight: bold; }
-        .saved-row { opacity: 0.4; pointer-events: none; background-color: #d4edda !important; }
-        #info { font-weight: bold; color: #007bff; }
+        .saved-row { opacity: 0.3; pointer-events: none; background-color: #d4edda !important; }
+        #info { font-weight: bold; color: #007bff; margin-bottom: 15px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="header-section text-center">
+    <div class="text-center mb-4">
         <h2>Motoristas Pendentes</h2>
-        <p id="info">Lendo planilha...</p>
+        <div id="info">Iniciando leitura do sistema...</div>
     </div>
 
     <div id="tabela-container" style="display: none;">
@@ -41,55 +37,51 @@
 
 <script>
 $(document).ready(function() {
-    // URL COM CACHEBUST PARA FORÇAR ATUALIZAÇÃO DO GOOGLE
     const URL_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv' + new Date().getTime();
-    
-    // COLOQUE SUA URL DO GOOGLE APPS SCRIPT AQUI:
-    const URL_SCRIPT = 'https://script.google.com/macros/s/AKfycbwcNwO7uVr-YIGHwD_7KyBnOG9pb6p_KxlRj7HUwW765NJMZGmIWVaLnW_CBQFQb8ToRw/exec'; 
-
-    // NOMES DAS COLUNAS (Verifique se estão idênticos na sua planilha)
-    const COL_BUSCA = "Motorista";
-    const COL_IDENTIFICADO = "Motorista Identificado";
+    const URL_SCRIPT = 'https://script.google.com/macros/s/AKfycbw7ufySzeBvbCbn0FVEmeahO57iJRYRcYHu0m3fCfcAjDFgbmVd4L1W4vLOdhEXdSWuOA/exec'; 
 
     Papa.parse(URL_CSV, {
         download: true,
         header: true,
         skipEmptyLines: true,
-        error: function(err) {
-            $('#info').text("Erro ao ler CSV: " + err);
-        },
+        dynamicTyping: false, // Mantém tudo como texto para evitar erro em números com vírgula
         complete: function(res) {
-            const dados = res.data;
-            const colunas = res.meta.fields;
+            let dados = res.data;
+            let colunasBrutas = res.meta.fields;
 
-            if (!colunas || colunas.length === 0) {
-                $('#info').text("Erro: Planilha vazia ou link inválido.");
+            // Limpeza de nomes de colunas (remove espaços extras que o Google Sheets coloca)
+            let colunas = colunasBrutas.map(c => c.trim());
+            
+            // Mapear os nomes das colunas de interesse
+            const COL_BUSCA = colunas.find(c => c === "Motorista");
+            const COL_ID = colunas.find(c => c.includes("Motorista Identificado"));
+
+            if (!COL_BUSCA || !COL_ID) {
+                $('#info').html("<span class='text-danger'>Erro: Colunas não encontradas. Verifique os títulos na planilha.</span>");
                 return;
             }
 
-            // Montar Cabeçalho
+            // Gerar Cabeçalho
             let hHtml = "";
             colunas.forEach(c => hHtml += `<th>${c}</th>`);
             hHtml += "<th>Ação</th>";
             $('#theader').html(hHtml);
 
             let contagem = 0;
-            $('#tbody').empty();
-
             dados.forEach(row => {
-                const motoristaOriginal = (row[COL_BUSCA] || "").toString();
-                const jaIdentificado = (row[COL_IDENTIFICADO] || "").toString().trim();
+                // Como limpamos as colunas, precisamos acessar os dados pela chave original
+                const valMotorista = (row[colunasBrutas[colunas.indexOf(COL_BUSCA)]] || "").toString();
+                const valIdentificado = (row[colunasBrutas[colunas.indexOf(COL_ID)]] || "").toString().trim();
 
-                // FILTRO: Se for Unknown/Unmatched E a coluna Identificado estiver VAZIA
-                const ehDesconhecido = /Unmatched|Unknown/i.test(motoristaOriginal);
-                const estaVazio = (jaIdentificado === "");
+                const ehDesconhecido = /Unmatched|Unknown/i.test(valMotorista);
+                const estaVazio = (valIdentificado === "");
 
                 if (ehDesconhecido && estaVazio) {
                     contagem++;
                     let rHtml = "<tr>";
-                    colunas.forEach(c => {
-                        if (c === COL_IDENTIFICADO) {
-                            rHtml += `<td class="col-input"><input type="text" class="input-text" placeholder="Nome..."></td>`;
+                    colunasBrutas.forEach(c => {
+                        if (c.trim() === COL_ID) {
+                            rHtml += `<td class="col-input"><input type="text" class="input-text" placeholder="Identificar..."></td>`;
                         } else {
                             rHtml += `<td>${row[c] || ""}</td>`;
                         }
@@ -102,63 +94,47 @@ $(document).ready(function() {
 
             $('#info').text("Registros pendentes: " + contagem);
             $('#tabela-container').show();
-
-            // Inicializar DataTables
-            $('#minhaTabela').DataTable({
-                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' },
-                order: []
-            });
+            $('#minhaTabela').DataTable({ language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' }});
         }
     });
 
-    // EVENTO SALVAR
     $('#tbody').on('click', '.btn-salvar', function() {
         const btn = $(this);
         const row = btn.closest('tr');
         const input = row.find('.input-text');
         const novoNome = input.val().trim();
 
-        if (!novoNome) {
-            alert("Digite um nome!");
-            return;
-        }
+        if (!novoNome) return alert("Por favor, digite o nome!");
 
         btn.prop('disabled', true).text('⏳');
 
-        // Capturar dados da linha
         let payload = {};
         const ths = [];
-        $('#theader th').each(function() { ths.push($(this).text()); });
+        $('#theader th').each(function() { ths.push($(this).text().trim()); });
 
         row.find('td').each(function(i) {
             const cabecalho = ths[i];
             if (cabecalho === "Ação") return;
             
-            if (cabecalho === COL_IDENTIFICADO) {
+            if (cabecalho.includes("Motorista Identificado")) {
                 payload[cabecalho] = novoNome;
             } else {
-                payload[cabecalho] = $(this).text();
+                payload[cabecalho] = $(this).text().trim();
             }
         });
 
-        // Enviar
-        fetch(URL_SCRIPT, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify(payload)
-        })
+        fetch(URL_SCRIPT, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
         .then(() => {
             btn.text('✅').removeClass('btn-success').addClass('btn-secondary');
             row.addClass('saved-row');
             input.prop('disabled', true);
         })
-        .catch(err => {
+        .catch(() => {
             alert("Erro ao salvar!");
             btn.prop('disabled', false).text('Salvar');
         });
     });
 });
 </script>
-
 </body>
 </html>
