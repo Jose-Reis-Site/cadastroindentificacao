@@ -2,30 +2,31 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Controle de Motoristas v5</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Identificação de Motoristas</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
     <style>
-        body { background-color: #f4f7f6; padding: 20px; font-family: sans-serif; }
-        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        .col-input { background-color: #fff9c4 !important; min-width: 200px; }
-        .input-text { border: 2px solid #ffc107; border-radius: 4px; padding: 5px; width: 100%; font-weight: bold; }
-        .saved-row { opacity: 0.3; pointer-events: none; background-color: #d4edda !important; }
-        #info { font-weight: bold; color: #007bff; margin-bottom: 15px; }
+        body { background-color: #f4f7f6; padding: 20px; }
+        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        .col-identificada { background-color: #fff9c4 !important; min-width: 200px; }
+        .input-motorista { border: 1px solid #ffa000; border-radius: 4px; padding: 5px; width: 100%; }
+        table thead { background-color: #343a40; color: white; }
+        .saved-row { opacity: 0.5; background-color: #d4edda !important; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="text-center mb-4">
-        <h2>Motoristas Pendentes</h2>
-        <div id="info">Iniciando leitura do sistema...</div>
+    <div class="header-section text-center mb-4">
+        <h2>Filtro de Motoristas Desconhecidos</h2>
+        <p id="status-text" class="text-muted">Carregando base de dados...</p>
     </div>
 
     <div id="tabela-container" style="display: none;">
-        <table id="minhaTabela" class="table table-sm table-hover table-bordered w-100">
-            <thead class="table-dark"><tr id="theader"></tr></thead>
-            <tbody id="tbody"></tbody>
+        <table id="dadosTabela" class="table table-sm table-hover table-bordered w-100">
+            <thead><tr id="tableHeader"></tr></thead>
+            <tbody id="tableBody"></tbody>
         </table>
     </div>
 </div>
@@ -37,101 +38,104 @@
 
 <script>
 $(document).ready(function() {
-    const URL_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv' + new Date().getTime();
-    const URL_SCRIPT = 'https://script.google.com/macros/s/AKfycbw7ufySzeBvbCbn0FVEmeahO57iJRYRcYHu0m3fCfcAjDFgbmVd4L1W4vLOdhEXdSWuOA/exec'; 
+    const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv';
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGJn4mrybiumVM1vgRzQSYVcoXETQjhInfgM9jcuKfU3sjnG6Gy66wt5JrE8zXkqDLmQ/exec'; // <--- COLOQUE SUA URL AQUI
 
-    Papa.parse(URL_CSV, {
+    let table;
+
+    Papa.parse(CSV_URL, {
         download: true,
         header: true,
         skipEmptyLines: true,
-        dynamicTyping: false, // Mantém tudo como texto para evitar erro em números com vírgula
-        complete: function(res) {
-            let dados = res.data;
-            let colunasBrutas = res.meta.fields;
+        complete: function(results) {
+            let data = results.data;
+            let columns = results.meta.fields;
 
-            // Limpeza de nomes de colunas (remove espaços extras que o Google Sheets coloca)
-            let colunas = colunasBrutas.map(c => c.trim());
+            // Definir colunas: [Identificado] [Original...] [Ação]
+            const colIdentificado = "Motorista Identificado";
+            const colAcao = "Ação";
             
-            // Mapear os nomes das colunas de interesse
-            const COL_BUSCA = colunas.find(c => c === "Motorista");
-            const COL_ID = colunas.find(c => c.includes("Motorista Identificado"));
+            let headerHtml = `<th>${colIdentificado}</th>`;
+            columns.forEach(col => { headerHtml += `<th>${col}</th>`; });
+            headerHtml += `<th>${colAcao}</th>`;
+            $('#tableHeader').html(headerHtml);
 
-            if (!COL_BUSCA || !COL_ID) {
-                $('#info').html("<span class='text-danger'>Erro: Colunas não encontradas. Verifique os títulos na planilha.</span>");
-                return;
-            }
-
-            // Gerar Cabeçalho
-            let hHtml = "";
-            colunas.forEach(c => hHtml += `<th>${c}</th>`);
-            hHtml += "<th>Ação</th>";
-            $('#theader').html(hHtml);
-
-            let contagem = 0;
-            dados.forEach(row => {
-                // Como limpamos as colunas, precisamos acessar os dados pela chave original
-                const valMotorista = (row[colunasBrutas[colunas.indexOf(COL_BUSCA)]] || "").toString();
-                const valIdentificado = (row[colunasBrutas[colunas.indexOf(COL_ID)]] || "").toString().trim();
-
-                const ehDesconhecido = /Unmatched|Unknown/i.test(valMotorista);
-                const estaVazio = (valIdentificado === "");
-
-                if (ehDesconhecido && estaVazio) {
-                    contagem++;
-                    let rHtml = "<tr>";
-                    colunasBrutas.forEach(c => {
-                        if (c.trim() === COL_ID) {
-                            rHtml += `<td class="col-input"><input type="text" class="input-text" placeholder="Identificar..."></td>`;
-                        } else {
-                            rHtml += `<td>${row[c] || ""}</td>`;
-                        }
-                    });
-                    rHtml += `<td><button class="btn btn-sm btn-success btn-salvar">Salvar</button></td>`;
-                    rHtml += "</tr>";
-                    $('#tbody').append(rHtml);
-                }
+            data.forEach((row, idx) => {
+                let htmlRow = `<tr>`;
+                // Coluna Input
+                htmlRow += `<td class="col-identificada"><input type="text" class="input-motorista" placeholder="Nome do motorista..."></td>`;
+                // Colunas Originais
+                columns.forEach(col => {
+                    htmlRow += `<td>${row[col] || ''}</td>`;
+                });
+                // Coluna Botão
+                htmlRow += `<td><button class="btn btn-primary btn-sm btn-save">Salvar</button></td>`;
+                htmlRow += `</tr>`;
+                $('#tableBody').append(htmlRow);
             });
 
-            $('#info').text("Registros pendentes: " + contagem);
+            $('#status-text').text("Mostrando apenas registros Unknown e Unmatched");
             $('#tabela-container').show();
-            $('#minhaTabela').DataTable({ language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' }});
+
+            table = $('#dadosTabela').DataTable({
+                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' },
+                pageLength: 25,
+                initComplete: function() {
+                    // Descobrir qual índice é a coluna "Motorista"
+                    let columnIndex = -1;
+                    $('#tableHeader th').each(function(i) {
+                        if ($(this).text() === "Motorista") columnIndex = i;
+                    });
+
+                    // Filtro inteligente (Regex) na coluna Motorista
+                    if(columnIndex !== -1) {
+                        this.api().column(columnIndex).search('Unmatched|Unknown', true, false).draw();
+                    }
+                }
+            });
         }
     });
 
-    $('#tbody').on('click', '.btn-salvar', function() {
-        const btn = $(this);
-        const row = btn.closest('tr');
-        const input = row.find('.input-text');
-        const novoNome = input.val().trim();
+    // Função de Salvar Linha
+    $('#tableBody').on('click', '.btn-save', function() {
+        const rowBtn = $(this);
+        const rowElement = rowBtn.closest('tr');
+        const novoNome = rowElement.find('.input-motorista').val();
 
-        if (!novoNome) return alert("Por favor, digite o nome!");
+        if (!novoNome) {
+            alert("Digite um nome antes de salvar!");
+            return;
+        }
 
-        btn.prop('disabled', true).text('⏳');
+        rowBtn.prop('disabled', true).text('⏳');
 
-        let payload = {};
-        const ths = [];
-        $('#theader th').each(function() { ths.push($(this).text().trim()); });
+        // Captura os dados da linha para enviar
+        let dadosLinha = {};
+        const cabecalhos = [];
+        $('#tableHeader th').each(function() { cabecalhos.push($(this).text()); });
 
-        row.find('td').each(function(i) {
-            const cabecalho = ths[i];
-            if (cabecalho === "Ação") return;
-            
-            if (cabecalho.includes("Motorista Identificado")) {
-                payload[cabecalho] = novoNome;
-            } else {
-                payload[cabecalho] = $(this).text().trim();
+        rowElement.find('td').each(function(i) {
+            let titulo = cabecalhos[i];
+            if (titulo === "Motorista Identificado") {
+                dadosLinha[titulo] = novoNome;
+            } else if (titulo !== "Ação") {
+                dadosLinha[titulo] = $(this).text();
             }
         });
 
-        fetch(URL_SCRIPT, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
+        fetch(SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify(dadosLinha)
+        })
         .then(() => {
-            btn.text('✅').removeClass('btn-success').addClass('btn-secondary');
-            row.addClass('saved-row');
-            input.prop('disabled', true);
+            rowBtn.text('✅').removeClass('btn-primary').addClass('btn-success');
+            rowElement.addClass('saved-row');
+            rowElement.find('input').prop('disabled', true);
         })
         .catch(() => {
-            alert("Erro ao salvar!");
-            btn.prop('disabled', false).text('Salvar');
+            alert("Erro ao salvar");
+            rowBtn.prop('disabled', false).text('Salvar');
         });
     });
 });
