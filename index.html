@@ -2,25 +2,32 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Identificador de Motoristas v3</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Identificador de Motoristas v4</title>
+    
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
+    
     <style>
-        body { background-color: #f8f9fa; padding: 20px; }
-        .container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .col-input { background-color: #fff9c4 !important; width: 250px; }
-        .input-text { border: 2px solid #ffc107; width: 100%; border-radius: 4px; padding: 4px; }
-        .status-badge { font-size: 0.8em; margin-top: 5px; }
+        body { background-color: #f4f7f6; padding: 20px; font-family: sans-serif; }
+        .container { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .header-section { margin-bottom: 25px; border-bottom: 2px solid #f1f1f1; padding-bottom: 20px; }
+        .col-input { background-color: #fff9c4 !important; min-width: 200px; }
+        .input-text { border: 2px solid #ffc107; border-radius: 4px; padding: 5px; width: 100%; font-weight: bold; }
+        .saved-row { opacity: 0.4; pointer-events: none; background-color: #d4edda !important; }
+        #info { font-weight: bold; color: #007bff; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2 class="text-center">Painel de Identificação</h2>
-    <p id="info" class="text-center text-muted">Lendo planilha...</p>
+    <div class="header-section text-center">
+        <h2>Motoristas Pendentes</h2>
+        <p id="info">Lendo planilha...</p>
+    </div>
 
-    <div id="tabela-container" style="display:none;">
-        <table id="minhaTabela" class="table table-bordered table-striped w-100">
+    <div id="tabela-container" style="display: none;">
+        <table id="minhaTabela" class="table table-sm table-hover table-bordered w-100">
             <thead class="table-dark"><tr id="theader"></tr></thead>
             <tbody id="tbody"></tbody>
         </table>
@@ -34,49 +41,55 @@
 
 <script>
 $(document).ready(function() {
-    // Adicionamos &cachebust= + data atual para forçar o Google a atualizar o CSV
-    const URL_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv' + '&cachebust=' + new Date().getTime();
+    // URL COM CACHEBUST PARA FORÇAR ATUALIZAÇÃO DO GOOGLE
+    const URL_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv' + new Date().getTime();
     
-    const URL_SCRIPT = 'https://script.google.com/macros/s/AKfycbzn7jPkc3Tfs1YDcPZbSe4al-Mp-HWA4fVlM2l_A8Vg2QhZalNe4ed7VToQU4q3KBz0BA/exec'; 
+    // COLOQUE SUA URL DO GOOGLE APPS SCRIPT AQUI:
+    const URL_SCRIPT = 'https://script.google.com/macros/s/AKfycbwcNwO7uVr-YIGHwD_7KyBnOG9pb6p_KxlRj7HUwW765NJMZGmIWVaLnW_CBQFQb8ToRw/exec'; 
+
+    // NOMES DAS COLUNAS (Verifique se estão idênticos na sua planilha)
+    const COL_BUSCA = "Motorista";
+    const COL_IDENTIFICADO = "Motorista Identificado";
 
     Papa.parse(URL_CSV, {
         download: true,
         header: true,
         skipEmptyLines: true,
+        error: function(err) {
+            $('#info').text("Erro ao ler CSV: " + err);
+        },
         complete: function(res) {
             const dados = res.data;
             const colunas = res.meta.fields;
-            
-            // BUSCA EXATA: Vamos encontrar o nome da coluna de identificação
-            // No seu exemplo ela aparece como "Motorista Identificado"
-            const colMotoristaOriginal = "Motorista";
-            const colMotoristaIdentificado = "Motorista Identificado";
 
-            // Monta cabeçalho
+            if (!colunas || colunas.length === 0) {
+                $('#info').text("Erro: Planilha vazia ou link inválido.");
+                return;
+            }
+
+            // Montar Cabeçalho
             let hHtml = "";
             colunas.forEach(c => hHtml += `<th>${c}</th>`);
             hHtml += "<th>Ação</th>";
             $('#theader').html(hHtml);
 
             let contagem = 0;
-            $('#tbody').empty(); // Limpa a tabela antes de preencher
+            $('#tbody').empty();
 
             dados.forEach(row => {
-                const valMot = (row[colMotoristaOriginal] || "").toString();
-                const valIden = (row[colMotoristaIdentificado] || "").toString().trim();
+                const motoristaOriginal = (row[COL_BUSCA] || "").toString();
+                const jaIdentificado = (row[COL_IDENTIFICADO] || "").toString().trim();
 
-                // FILTRO REFORÇADO:
-                // 1. O motorista original tem que ser Unmatched ou Unknown
-                // 2. A coluna "Motorista Identificado" TEM QUE ESTAR VAZIA
-                const ehDesconhecido = /Unmatched|Unknown/i.test(valMot);
-                const jaEstaPreenchido = valIden.length > 0;
+                // FILTRO: Se for Unknown/Unmatched E a coluna Identificado estiver VAZIA
+                const ehDesconhecido = /Unmatched|Unknown/i.test(motoristaOriginal);
+                const estaVazio = (jaIdentificado === "");
 
-                if (ehDesconhecido && !jaEstaPreenchido) {
+                if (ehDesconhecido && estaVazio) {
                     contagem++;
                     let rHtml = "<tr>";
                     colunas.forEach(c => {
-                        if (c === colMotoristaIdentificado) {
-                            rHtml += `<td class="col-input"><input type="text" class="input-text" placeholder="Nome do motorista..."></td>`;
+                        if (c === COL_IDENTIFICADO) {
+                            rHtml += `<td class="col-input"><input type="text" class="input-text" placeholder="Nome..."></td>`;
                         } else {
                             rHtml += `<td>${row[c] || ""}</td>`;
                         }
@@ -87,55 +100,65 @@ $(document).ready(function() {
                 }
             });
 
-            $('#info').text(`Encontrados ${contagem} registros aguardando identificação.`);
+            $('#info').text("Registros pendentes: " + contagem);
             $('#tabela-container').show();
-            
-            // Reinicializa o DataTable
-            if ($.fn.DataTable.isDataTable('#minhaTabela')) {
-                $('#minhaTabela').DataTable().destroy();
-            }
-            $('#minhaTabela').DataTable({ 
+
+            // Inicializar DataTables
+            $('#minhaTabela').DataTable({
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' },
-                order: [] 
+                order: []
             });
         }
     });
-    
-    // ... restante do código de salvar (mantém o mesmo) ...
-});
 
-    // Ação do Botão Salvar
+    // EVENTO SALVAR
     $('#tbody').on('click', '.btn-salvar', function() {
         const btn = $(this);
         const row = btn.closest('tr');
         const input = row.find('.input-text');
         const novoNome = input.val().trim();
 
-        if (!novoNome) return alert("Digite um nome!");
+        if (!novoNome) {
+            alert("Digite um nome!");
+            return;
+        }
 
-        btn.prop('disabled', true).text('...');
+        btn.prop('disabled', true).text('⏳');
 
-        // Mapeia os dados da linha
+        // Capturar dados da linha
         let payload = {};
-        const headers = [];
-        $('#theader th').each(function() { headers.push($(this).text()); });
+        const ths = [];
+        $('#theader th').each(function() { ths.push($(this).text()); });
 
         row.find('td').each(function(i) {
-            const h = headers[i];
-            if (h === "Ação") return;
-            // Se for a coluna do input, pega o valor do input, senão pega o texto da célula
-            payload[h] = headers[i].toLowerCase().includes("identificado") ? novoNome : $(this).text();
+            const cabecalho = ths[i];
+            if (cabecalho === "Ação") return;
+            
+            if (cabecalho === COL_IDENTIFICADO) {
+                payload[cabecalho] = novoNome;
+            } else {
+                payload[cabecalho] = $(this).text();
+            }
         });
 
-        fetch(URL_SCRIPT, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
+        // Enviar
+        fetch(URL_SCRIPT, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify(payload)
+        })
         .then(() => {
             btn.text('✅').removeClass('btn-success').addClass('btn-secondary');
-            row.css('opacity', '0.4');
+            row.addClass('saved-row');
             input.prop('disabled', true);
         })
-        .catch(e => { alert("Erro ao salvar"); btn.prop('disabled', false).text('Salvar'); });
+        .catch(err => {
+            alert("Erro ao salvar!");
+            btn.prop('disabled', false).text('Salvar');
+        });
     });
 });
 </script>
+
 </body>
 </html>
