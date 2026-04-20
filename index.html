@@ -12,7 +12,7 @@
         .col-identificada { background-color: #fff9c4 !important; min-width: 200px; }
         .input-motorista { border: 1px solid #ffa000; border-radius: 4px; padding: 5px; width: 100%; }
         table thead { background-color: #343a40; color: white; }
-        .saved-row { opacity: 0.5; background-color: #d4edda !important; }
+        .saved-row { opacity: 0.5; background-color: #d4edda !important; transition: all 0.5s ease; }
     </style>
 </head>
 <body>
@@ -38,8 +38,10 @@
 
 <script>
 $(document).ready(function() {
+    // URL do seu CSV publicado
     const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS4075sYsvoz_4YZmDnxQRUoVWE86-yamQ4UkCtyYz3ZEJM3qoTdmr1q4IW4ARKCw8rJ1HQMAvNyinA/pub?gid=0&single=true&output=csv';
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbydE7dmdOrpDfsnj3-qF1K1PVxYupxldMMWtSGfABB_fVwZej6JGgVGjhBh93HG0nvYqg/exec'; // <--- COLOQUE SUA URL AQUI
+    // URL do seu Web App (Após publicar o script acima)
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzvgEbh8VnNagSX_fhNa-wqYTGC_EbITCLQqBGSAACDuqjghby4FQu2g6iB77OMiw8S/exec'; 
 
     let table;
 
@@ -51,7 +53,6 @@ $(document).ready(function() {
             let data = results.data;
             let columns = results.meta.fields;
 
-            // Definir colunas: [Identificado] [Original...] [Ação]
             const colIdentificado = "Motorista Identificado";
             const colAcao = "Ação";
             
@@ -62,13 +63,10 @@ $(document).ready(function() {
 
             data.forEach((row, idx) => {
                 let htmlRow = `<tr>`;
-                // Coluna Input
                 htmlRow += `<td class="col-identificada"><input type="text" class="input-motorista" placeholder="Nome do motorista..."></td>`;
-                // Colunas Originais
                 columns.forEach(col => {
                     htmlRow += `<td>${row[col] || ''}</td>`;
                 });
-                // Coluna Botão
                 htmlRow += `<td><button class="btn btn-primary btn-sm btn-save">Salvar</button></td>`;
                 htmlRow += `</tr>`;
                 $('#tableBody').append(htmlRow);
@@ -81,14 +79,13 @@ $(document).ready(function() {
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/pt-BR.json' },
                 pageLength: 25,
                 initComplete: function() {
-                    // Descobrir qual índice é a coluna "Motorista"
                     let columnIndex = -1;
                     $('#tableHeader th').each(function(i) {
                         if ($(this).text() === "Motorista") columnIndex = i;
                     });
 
-                    // Filtro inteligente (Regex) na coluna Motorista
                     if(columnIndex !== -1) {
+                        // Filtra para exibir APENAS o que precisa ser identificado
                         this.api().column(columnIndex).search('Unmatched|Unknown', true, false).draw();
                     }
                 }
@@ -96,7 +93,6 @@ $(document).ready(function() {
         }
     });
 
-    // Função de Salvar Linha
     $('#tableBody').on('click', '.btn-save', function() {
         const rowBtn = $(this);
         const rowElement = rowBtn.closest('tr');
@@ -109,7 +105,6 @@ $(document).ready(function() {
 
         rowBtn.prop('disabled', true).text('⏳');
 
-        // Captura os dados da linha para enviar
         let dadosLinha = {};
         const cabecalhos = [];
         $('#tableHeader th').each(function() { cabecalhos.push($(this).text()); });
@@ -123,23 +118,22 @@ $(document).ready(function() {
             }
         });
 
-        // Localize este trecho no seu index.html:
-fetch(SCRIPT_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    body: JSON.stringify(dadosLinha)
-})
-.then(() => {
-    // --- ADICIONE ESTAS LINHAS ABAIXO ---
-    rowBtn.text('✅').removeClass('btn-primary').addClass('btn-success');
-    rowElement.addClass('saved-row');
-    
-    // Remove a linha da tabela visualmente após 1 segundo para você ver o feedback de sucesso
-    setTimeout(() => {
-        table.row(rowElement).remove().draw(false);
-    }, 1000);
-    // ------------------------------------
-})
+        fetch(SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify(dadosLinha)
+        })
+        .then(() => {
+            // Feedback visual de sucesso
+            rowBtn.text('✅').removeClass('btn-primary').addClass('btn-success');
+            rowElement.addClass('saved-row');
+            rowElement.find('input').prop('disabled', true);
+
+            // REMOVE A LINHA DA TABELA APÓS 1 SEGUNDO
+            setTimeout(() => {
+                table.row(rowElement).remove().draw(false);
+            }, 1000);
+        })
         .catch(() => {
             alert("Erro ao salvar");
             rowBtn.prop('disabled', false).text('Salvar');
